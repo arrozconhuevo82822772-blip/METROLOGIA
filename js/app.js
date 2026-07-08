@@ -51,7 +51,7 @@ function loadState(){
       renderEmpresas();
     }, (err)=>{
       console.error("Error de Firestore:", err);
-      showToast("No se pudo conectar a Firebase, revisa js/firebase-config.js");
+      showToast("No se pudo conectar a la base de datos en la nube, se usará guardado local");
       loadStateLocalFallback();
     });
   } else {
@@ -118,9 +118,50 @@ document.getElementById("navList").addEventListener("click", (e)=>{
   document.getElementById("view-"+btn.dataset.view).classList.add("active");
   if(btn.dataset.view==="dashboard") renderDashboard();
   if(btn.dataset.view==="eventos") renderEventos();
+  if(btn.dataset.view==="registro") renderActivities();
 });
 
 /* ---------- DASHBOARD ---------- */
+function drawDonut(statusCounts, statusColors){
+  const svg = document.getElementById("statusDonut");
+  const legend = document.getElementById("statusLegend");
+  const total = Object.values(statusCounts).reduce((a,b)=>a+b,0) || 1;
+  const r = 50, cx = 60, cy = 60, circumference = 2*Math.PI*r;
+  let offset = 0;
+  const segments = STATUSES.map(s=>{
+    const v = statusCounts[s]||0;
+    const frac = v/total;
+    const len = frac*circumference;
+    const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${statusColors[s]}" stroke-width="16"
+      stroke-dasharray="${len} ${circumference-len}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    offset += len;
+    return seg;
+  }).join("");
+  svg.innerHTML = segments + `<circle cx="${cx}" cy="${cy}" r="32" fill="#fff"/>
+    <text x="${cx}" y="${cy-2}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="20" font-weight="600" fill="#1B2430">${total}</text>
+    <text x="${cx}" y="${cy+14}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="8" fill="#8B93A1">EMPRESAS</text>`;
+
+  legend.innerHTML = STATUSES.map(s=>{
+    const v = statusCounts[s]||0;
+    const pct = total ? Math.round((v/total)*100) : 0;
+    return `<li><span class="sw" style="background:${statusColors[s]}"></span>${s}<span class="n">${v} · ${pct}%</span></li>`;
+  }).join("");
+}
+
+function renderExecSummary(counts, statusCounts){
+  const total = COMPANIES.length;
+  const contactados = total - (statusCounts["Por contactar"]||0);
+  const pctContactados = Math.round((contactados/total)*100);
+  const pctClientes = Math.round(((statusCounts["Cliente"]||0)/total)*100);
+  const municipiosCubiertos = new Set(COMPANIES.map(c=>c.municipio)).size;
+  const el = document.getElementById("execSummaryText");
+  el.innerHTML = `De <b>${total} empresas</b> identificadas en <b>${municipiosCubiertos} municipios de Caldas</b>,
+    se ha contactado al <b>${pctContactados}%</b> (${contactados} empresas). De ellas,
+    <b>${statusCounts["Cliente"]||0}</b> ya son clientes (${pctClientes}% del total identificado) y
+    <b>${statusCounts["Cotización enviada"]||0}</b> tienen una cotización enviada en curso.
+    Faltan <b>${statusCounts["Por contactar"]||0}</b> empresas por contactar por primera vez.`;
+}
+
 function renderDashboard(){
   const statuses = Object.values(crmState).map(s=>s.status);
   const counts = {
@@ -142,11 +183,11 @@ function renderDashboard(){
   const statusCounts = {};
   STATUSES.forEach(s=>statusCounts[s]=0);
   COMPANIES.forEach(c=>{ const s=(crmState[c.id]||{}).status||"Por contactar"; statusCounts[s]++; });
-  const maxS = Math.max(...Object.values(statusCounts), 1);
-  document.getElementById("statusChart").innerHTML = STATUSES.map(s=>{
-    const v = statusCounts[s];
-    return `<div class="chart-row"><div class="clabel">${s}</div><div class="chart-track"><i style="width:${(v/maxS)*100}%"></i></div><div class="chart-val">${v}</div></div>`;
-  }).join("");
+  const statusColors = {
+    "Por contactar":"#C08A2E","Contactado":"#2A5C8A","Cotización enviada":"#3E6FA6",
+    "Cliente":"#2A6B45","No interesado":"#8C3327","Sin respuesta":"#8B93A1"
+  };
+  drawDonut(statusCounts, statusColors);
 
   const sectors = [...new Set(COMPANIES.map(c=>c.sector))];
   const sectorCounts = {};
@@ -158,10 +199,12 @@ function renderDashboard(){
     return `<div class="chart-row"><div class="clabel">${s}</div><div class="chart-track"><i style="width:${(v/maxSec)*100}%"></i></div><div class="chart-val">${v}</div></div>`;
   }).join("");
 
+  renderExecSummary(counts, statusCounts);
+
   const pending = COMPANIES.filter(c=>(crmState[c.id]||{}).nextAction).slice(0,8);
   const list = document.getElementById("pendingList");
   if(pending.length===0){
-    list.innerHTML = `<li style="color:var(--ink-soft)">Aún no has registrado próximas acciones. Ve a "Empresas" y edita el seguimiento de un prospecto.</li>`;
+    list.innerHTML = `<li style="color:var(--ink-soft)">Aún no hay próximas acciones registradas. Ve a "Empresas" y programa el seguimiento de un prospecto.</li>`;
   } else {
     list.innerHTML = pending.map(c=>{
       const st = crmState[c.id];
@@ -171,10 +214,63 @@ function renderDashboard(){
 }
 
 /* ---------- EVENTOS ---------- */
+let customEvents = [];
+const EVENTS_COLLECTION = "eventos_calibracion";
+const EVENTS_LOCAL_KEY = "eventos_calibracion_custom";
+
+function loadCustomEvents(){
+  if(firebaseEnabled && firebaseDB){
+    firebaseDB.collection(EVENTS_COLLECTION).onSnapshot((snapshot)=>{
+      customEvents = [];
+      snapshot.forEach(doc=> customEvents.push({...doc.data(), id:doc.id}));
+      renderEventos();
+    }, (err)=>{
+      console.error(err);
+      loadCustomEventsLocalFallback();
+      renderEventos();
+    });
+  } else {
+    loadCustomEventsLocalFallback();
+  }
+}
+
+function loadCustomEventsLocalFallback(){
+  try{
+    const raw = localStorage.getItem(EVENTS_LOCAL_KEY);
+    customEvents = raw ? JSON.parse(raw) : [];
+  }catch(e){ customEvents = []; }
+}
+
+async function saveCustomEvent(ev){
+  if(firebaseEnabled && firebaseDB){
+    try{
+      const docRef = await firebaseDB.collection(EVENTS_COLLECTION).add(ev);
+      return docRef.id;
+    }catch(e){
+      console.error(e);
+      showToast("No se pudo guardar en la nube, se guardó localmente");
+    }
+  }
+  customEvents.push({...ev, id:"local_"+Date.now()});
+  localStorage.setItem(EVENTS_LOCAL_KEY, JSON.stringify(customEvents));
+  return null;
+}
+
+async function deleteCustomEvent(id){
+  if(firebaseEnabled && firebaseDB && !id.startsWith("local_")){
+    try{ await firebaseDB.collection(EVENTS_COLLECTION).doc(id).delete(); }catch(e){ console.error(e); }
+  } else {
+    customEvents = customEvents.filter(e=>e.id!==id);
+    localStorage.setItem(EVENTS_LOCAL_KEY, JSON.stringify(customEvents));
+  }
+  renderEventos();
+}
+
 function renderEventos(){
   const grid = document.getElementById("eventsGrid");
   const today = new Date().toISOString().slice(0,10);
-  const sorted = [...EVENTS].sort((a,b)=>{
+  const allEvents = [...EVENTS, ...customEvents];
+  const sorted = allEvents.sort((a,b)=>{
     if(!a.date) return 1;
     if(!b.date) return -1;
     return a.date.localeCompare(b.date);
@@ -186,27 +282,72 @@ function renderEventos(){
     if(ev.date && isSoon) badge = `<span class="stamp st-Cliente">Próximo</span>`;
     else if(ev.date && isPast) badge = `<span class="stamp st-Sin-respuesta">Ya realizado</span>`;
     else badge = `<span class="stamp st-Por-contactar">Recurrente</span>`;
+    const isCustom = !!ev.custom;
     return `
-    <div class="card">
+    <div class="card" data-evid="${ev.id}">
       <div class="card-body">
         <div class="card-top">
-          <span class="sector-tag">${ev.tag}</span>
+          <span class="sector-tag">${ev.tag||"Evento"}</span>
           ${badge}
         </div>
         <div class="company-name">${ev.title}</div>
-        <div class="need" style="margin-bottom:12px;">${ev.desc}</div>
+        <div class="need" style="margin-bottom:12px;">${ev.desc||""}</div>
         <div class="contact-lines">
-          <div><span class="k">Fecha</span>${ev.dateLabel}</div>
-          <div><span class="k">Lugar</span>${ev.place}</div>
-          <div><span class="k">Organiza</span>${ev.organizer}</div>
+          <div><span class="k">Fecha</span>${ev.dateLabel||"Por confirmar"}</div>
+          <div><span class="k">Lugar</span>${ev.place||"—"}</div>
+          <div><span class="k">Organiza</span>${ev.organizer||"—"}</div>
         </div>
         <div class="card-actions">
-          <a class="btn" href="${ev.link}" target="_blank" rel="noopener" style="text-decoration:none;">Más información</a>
+          ${ev.link ? `<a class="btn" href="${ev.link}" target="_blank" rel="noopener" style="text-decoration:none;">Ver enlace</a>` : `<span class="btn ghost" style="cursor:default;">Sin enlace</span>`}
+          ${isCustom ? `<button class="btn ghost del-event">Eliminar</button>` : ""}
         </div>
       </div>
     </div>`;
   }).join("");
+
+  grid.querySelectorAll(".del-event").forEach(btn=>{
+    btn.addEventListener("click", (e)=>{
+      const id = e.target.closest(".card").dataset.evid;
+      deleteCustomEvent(id);
+    });
+  });
 }
+
+function openEventModal(){ document.getElementById("eventModalOverlay").classList.add("open"); }
+function closeEventModal(){
+  document.getElementById("eventModalOverlay").classList.remove("open");
+  ["ev-title","ev-tag","ev-date","ev-place","ev-organizer","ev-desc","ev-link"].forEach(id=>{
+    document.getElementById(id).value = "";
+  });
+}
+
+document.getElementById("addEventBtn").addEventListener("click", openEventModal);
+document.getElementById("cancelEventBtn").addEventListener("click", closeEventModal);
+document.getElementById("eventModalOverlay").addEventListener("click", (e)=>{
+  if(e.target.id === "eventModalOverlay") closeEventModal();
+});
+
+document.getElementById("saveEventBtn").addEventListener("click", async ()=>{
+  const title = document.getElementById("ev-title").value.trim();
+  if(!title){ showToast("Escribe al menos el nombre del evento"); return; }
+  const date = document.getElementById("ev-date").value;
+  const dateLabel = date ? new Date(date+"T00:00:00").toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : "Fecha por confirmar";
+  const ev = {
+    title,
+    tag: document.getElementById("ev-tag").value.trim() || "Evento",
+    date,
+    dateLabel,
+    place: document.getElementById("ev-place").value.trim(),
+    organizer: document.getElementById("ev-organizer").value.trim(),
+    desc: document.getElementById("ev-desc").value.trim(),
+    link: document.getElementById("ev-link").value.trim(),
+    custom: true,
+  };
+  await saveCustomEvent(ev);
+  closeEventModal();
+  renderEventos();
+  showToast("Evento agregado");
+});
 
 /* ---------- EMPRESAS: FILTERS ---------- */
 function populateMunicipioFilter(){
@@ -218,7 +359,10 @@ function populateMunicipioFilter(){
 function renderSectorTabs(){
   const sectors = ["Todos", ...new Set(COMPANIES.map(c=>c.sector))];
   const el = document.getElementById("sectorTabs");
-  el.innerHTML = sectors.map(s=>`<button data-sector="${s}" class="${s===activeSector?'active':''}">${s}</button>`).join("");
+  el.innerHTML = sectors.map(s=>{
+    const count = s==="Todos" ? COMPANIES.length : COMPANIES.filter(c=>c.sector===s).length;
+    return `<button data-sector="${s}" class="${s===activeSector?'active':''}">${s} <span style="opacity:.6">(${count})</span></button>`;
+  }).join("");
   el.querySelectorAll("button").forEach(b=>{
     b.addEventListener("click", ()=>{ activeSector=b.dataset.sector; renderSectorTabs(); renderEmpresas(); });
   });
@@ -299,6 +443,7 @@ function renderCards(filtered){
       const card = e.target.closest(".card");
       const id = card.dataset.id;
       const panel = card.querySelector(".panel");
+      const oldStatus = (crmState[id]||{}).status || "Por contactar";
       crmState[id] = {
         status: panel.querySelector(".f-status").value,
         contactDate: panel.querySelector(".f-date").value,
@@ -313,6 +458,10 @@ function renderCards(filtered){
       const stampEl = card.querySelector(".stamp");
       stampEl.className = "stamp st-" + slug(crmState[id].status);
       stampEl.textContent = crmState[id].status;
+      if(ok){
+        const company = COMPANIES.find(c=>c.id===id);
+        logAutoActivity(company, oldStatus, crmState[id]);
+      }
     });
   });
   grid.querySelectorAll(".gen-email").forEach(btn=>{
@@ -438,10 +587,168 @@ document.getElementById("copyEmailBtn").addEventListener("click", async ()=>{
   }
 });
 
+/* ===========================================================
+ * REGISTRO DE ACTIVIDADES (evidencia de gestión y trabajo virtual)
+ * ===========================================================
+ * Cada actividad manual, y cada actualización de seguimiento en el CRM,
+ * queda registrada aquí con fecha y hora exactas. Sirve como bitácora
+ * de evidencia para reportar el avance de las actividades.
+ * =========================================================== */
+let activities = [];
+const ACTIVITIES_COLLECTION = "registro_actividades";
+const ACTIVITIES_LOCAL_KEY = "registro_actividades_local";
+
+function loadActivities(){
+  if(firebaseEnabled && firebaseDB){
+    firebaseDB.collection(ACTIVITIES_COLLECTION).onSnapshot((snapshot)=>{
+      activities = [];
+      snapshot.forEach(doc=> activities.push({...doc.data(), id:doc.id}));
+      renderActivities();
+    }, (err)=>{
+      console.error(err);
+      loadActivitiesLocalFallback();
+      renderActivities();
+    });
+  } else {
+    loadActivitiesLocalFallback();
+  }
+}
+
+function loadActivitiesLocalFallback(){
+  try{
+    const raw = localStorage.getItem(ACTIVITIES_LOCAL_KEY);
+    activities = raw ? JSON.parse(raw) : [];
+  }catch(e){ activities = []; }
+}
+
+async function saveActivity(act){
+  if(firebaseEnabled && firebaseDB){
+    try{
+      await firebaseDB.collection(ACTIVITIES_COLLECTION).add(act);
+      return;
+    }catch(e){ console.error(e); }
+  }
+  activities.push({...act, id:"local_"+Date.now()+"_"+Math.random().toString(36).slice(2,6)});
+  localStorage.setItem(ACTIVITIES_LOCAL_KEY, JSON.stringify(activities));
+  renderActivities();
+}
+
+/* Registro automático: se llama cada vez que se guarda un seguimiento en el CRM */
+function logAutoActivity(company, oldStatus, newState){
+  saveActivity({
+    date: new Date().toISOString().slice(0,10),
+    type: "Actualización de seguimiento (CRM)",
+    mode: (newState.medium === "Visita") ? "Presencial" : "Virtual",
+    desc: `${company.name}: estado cambió de "${oldStatus}" a "${newState.status}". ${newState.nextAction ? "Próxima acción: "+newState.nextAction+"." : ""}`,
+    evidence: "",
+    hours: "",
+    auto: true,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+function renderActivitiesKpis(){
+  const el = document.getElementById("activitiesKpiStrip");
+  const total = activities.length;
+  const virtual = activities.filter(a=>a.mode==="Virtual").length;
+  const totalHours = activities.reduce((sum,a)=> sum + (parseFloat(a.hours)||0), 0);
+  const auto = activities.filter(a=>a.auto).length;
+  const cards = [
+    [total, "Actividades registradas"],
+    [virtual, "Realizadas en modalidad virtual"],
+    [totalHours.toFixed(1), "Horas dedicadas registradas"],
+    [auto, "Generadas automáticamente por el CRM"],
+  ];
+  el.innerHTML = cards.map(([num,lbl])=>`
+    <div class="kpi-card"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>
+  `).join("");
+}
+
+function renderActivities(){
+  renderActivitiesKpis();
+  const wrap = document.getElementById("activitiesTableWrap");
+  const sorted = [...activities].sort((a,b)=> (b.timestamp||b.date||"").localeCompare(a.timestamp||a.date||""));
+  if(sorted.length===0){
+    wrap.innerHTML = `<div class="panel-block" style="color:var(--ink-soft);font-size:13px;">Aún no hay actividades registradas. Se agregarán solas cada vez que actualices el seguimiento de una empresa, o puedes registrar una manualmente con el botón "+ Registrar actividad".</div>`;
+    return;
+  }
+  wrap.innerHTML = `<table class="crm-table"><thead><tr>
+    <th>Fecha</th><th>Tipo</th><th>Modalidad</th><th>Descripción</th><th>Evidencia</th><th>Horas</th><th></th>
+  </tr></thead><tbody>
+  ${sorted.map(a=>`<tr data-actid="${a.id}">
+    <td>${a.date||"—"}</td>
+    <td>${a.type}${a.auto?' <span class="stamp st-Sin-respuesta" style="font-size:8.5px;">AUTO</span>':''}</td>
+    <td>${a.mode||"—"}</td>
+    <td>${a.desc||""}</td>
+    <td>${a.evidence ? `<a href="${a.evidence}" target="_blank" rel="noopener">Ver evidencia ↗</a>` : "—"}</td>
+    <td>${a.hours||"—"}</td>
+    <td>${a.auto ? "" : `<button class="btn ghost del-activity" style="padding:4px 8px;font-size:9.5px;">Eliminar</button>`}</td>
+  </tr>`).join("")}
+  </tbody></table>`;
+
+  wrap.querySelectorAll(".del-activity").forEach(btn=>{
+    btn.addEventListener("click", async (e)=>{
+      const id = e.target.closest("tr").dataset.actid;
+      if(firebaseEnabled && firebaseDB && !id.startsWith("local_")){
+        try{ await firebaseDB.collection(ACTIVITIES_COLLECTION).doc(id).delete(); }catch(err){ console.error(err); }
+      } else {
+        activities = activities.filter(a=>a.id!==id);
+        localStorage.setItem(ACTIVITIES_LOCAL_KEY, JSON.stringify(activities));
+        renderActivities();
+      }
+    });
+  });
+}
+
+function openActivityModal(){
+  document.getElementById("ac-date").value = new Date().toISOString().slice(0,10);
+  document.getElementById("activityModalOverlay").classList.add("open");
+}
+function closeActivityModal(){
+  document.getElementById("activityModalOverlay").classList.remove("open");
+  ["ac-date","ac-desc","ac-evidence","ac-hours"].forEach(id=> document.getElementById(id).value = "");
+}
+document.getElementById("addActivityBtn").addEventListener("click", openActivityModal);
+document.getElementById("cancelActivityBtn").addEventListener("click", closeActivityModal);
+document.getElementById("activityModalOverlay").addEventListener("click",(e)=>{
+  if(e.target.id==="activityModalOverlay") closeActivityModal();
+});
+document.getElementById("saveActivityBtn").addEventListener("click", async ()=>{
+  const desc = document.getElementById("ac-desc").value.trim();
+  if(!desc){ showToast("Describe brevemente la actividad"); return; }
+  await saveActivity({
+    date: document.getElementById("ac-date").value || new Date().toISOString().slice(0,10),
+    type: document.getElementById("ac-type").value,
+    mode: document.getElementById("ac-mode").value,
+    desc,
+    evidence: document.getElementById("ac-evidence").value.trim(),
+    hours: document.getElementById("ac-hours").value,
+    auto: false,
+    timestamp: new Date().toISOString(),
+  });
+  closeActivityModal();
+  showToast("Actividad registrada");
+});
+document.getElementById("exportActivitiesBtn").addEventListener("click", ()=>{
+  const headers = ["Fecha","Tipo","Modalidad","Descripcion","Evidencia","Horas"];
+  const rows = activities.map(a=>[a.date,a.type,a.mode,a.desc,a.evidence,a.hours]
+    .map(v=>`"${(v||"").toString().replace(/"/g,'""')}"`).join(","));
+  const csv = [headers.join(","), ...rows].join("\n");
+  const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "registro_actividades_calibracion.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast("CSV exportado");
+});
+
 document.getElementById("guionList").innerHTML = GUION.map(g=>`<li>${g}</li>`).join("");
 
 (function init(){
   loadState();
+  loadCustomEvents();
+  loadActivities();
   renderDashboard();
   populateMunicipioFilter();
   renderSectorTabs();

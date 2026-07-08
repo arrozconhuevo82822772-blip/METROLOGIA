@@ -7,10 +7,26 @@ correo y guion de llamada.
 
 ## Novedades de esta versión
 
-- **55 empresas** en toda la jurisdicción de Caldas (antes solo Manizales):
-  Chinchiná, La Dorada, Villamaría, Anserma, Riosucio, Marmato, y más.
-  Cada empresa ahora tiene un campo **Municipio**, con su propio filtro en
-  la vista "Empresas".
+- **91 empresas** en 22 municipios de Caldas — se amplió con entidades
+  públicas (alcaldías, UMATA, hospitales) de municipios que faltaban: Supía,
+  Filadelfia, Viterbo, Marquetalia, Manzanares, Pácora, Belalcázar, Victoria,
+  Samaná y Pensilvania.
+- **Nueva vista "Registro de actividades"**: bitácora de evidencia. Cada vez
+  que actualizas el seguimiento de una empresa en el CRM, se registra
+  **automáticamente** una entrada con fecha y hora exactas. Además puedes
+  registrar manualmente cualquier otra actividad (capacitación, evento,
+  trabajo virtual) con descripción, modalidad, enlace a la evidencia
+  (pantallazo o documento en Drive) y horas dedicadas. Todo exportable a CSV
+  con un clic — ese CSV es el consolidado de soporte de tus actividades.
+- El Excel también tiene ahora una hoja "Registro de Actividades" en blanco,
+  lista para diligenciar a mano si prefieres llevarlo ahí.
+
+- **75 empresas** en toda la jurisdicción de Caldas (antes solo Manizales):
+  Chinchiná, La Dorada, Villamaría, Anserma, Riosucio, Marmato, Neira,
+  Aguadas, Salamina, y más. Incluye también grandes prestadoras de
+  servicios públicos con cobertura departamental (Efigas, CHEC,
+  Empocaldas), que llegan a decenas de municipios de Caldas. Cada empresa
+  tiene un campo **Municipio**, con su propio filtro en la vista "Empresas".
 - **Nueva vista "Eventos"**: ferias, ruedas de negocios y encuentros
   empresariales reales de Caldas, con fecha, lugar, organizador y enlace.
   Esta lista es **curada manualmente** (no hay forma de que una página
