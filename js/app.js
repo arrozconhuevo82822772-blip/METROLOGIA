@@ -380,46 +380,108 @@ function matchesFilters(c){
   return true;
 }
 
+const SECTOR_STYLES = {
+  "Metalmecánica":        {c:"#28577F", bg:"#DCE7F1", icon:"gear"},
+  "Salud / IPS":          {c:"#A13F52", bg:"#F4E1E6", icon:"cross"},
+  "Alimentos / Agroindustria": {c:"#28623F", bg:"#DFEEE3", icon:"leaf"},
+  "Construcción":         {c:"#96591A", bg:"#F5E7D4", icon:"building"},
+  "Educación":            {c:"#5B3F94", bg:"#E9E3F4", icon:"cap"},
+  "Servicios Públicos":   {c:"#1F6E73", bg:"#DCEEEE", icon:"bolt"},
+};
+function sectorStyle(sector){ return SECTOR_STYLES[sector] || {c:"#28577F",bg:"#DCE7F1",icon:"gear"}; }
+
+let selectedCompanyId = null;
+
 function renderEmpresas(){
   const filtered = COMPANIES.filter(matchesFilters);
   document.getElementById("countLine").textContent = `${filtered.length} de ${COMPANIES.length} empresas`;
   if(viewMode==="cards"){
-    document.getElementById("cardGrid").style.display="grid";
+    document.getElementById("empresasLayout").style.display="grid";
     document.getElementById("tableWrap").style.display="none";
-    renderCards(filtered);
+    renderExplorer(filtered);
   } else {
-    document.getElementById("cardGrid").style.display="none";
+    document.getElementById("empresasLayout").style.display="none";
     document.getElementById("tableWrap").style.display="block";
     renderTable(filtered);
   }
 }
 
-function renderCards(filtered){
-  const grid = document.getElementById("cardGrid");
-  grid.innerHTML = filtered.map(c=>{
-    const st = crmState[c.id] || {status:"Por contactar", nextAction:"", notes:"", contactDate:"", medium:""};
-    return `
-    <div class="card" data-id="${c.id}">
-      <div class="card-body">
-        <div class="card-top">
-          <span class="sector-tag">${c.sector}</span>
+function renderExplorer(filtered){
+  if(!filtered.find(c=>c.id===selectedCompanyId)) selectedCompanyId = filtered[0] ? filtered[0].id : null;
+
+  const listPane = document.getElementById("empresasListPane");
+  listPane.innerHTML = filtered.map(c=>{
+    const st = crmState[c.id] || {status:"Por contactar"};
+    const sc = sectorStyle(c.sector);
+    const isActive = c.id === selectedCompanyId;
+    return `<div class="list-item ${isActive?'active':''}" data-id="${c.id}" style="--sc:${sc.c}">
+      <div class="li-top">
+        <span class="li-name">${c.name}</span>
+        <span class="li-dot" style="background:${statusDotColor(st.status)}" title="${st.status}"></span>
+      </div>
+      <div class="li-meta">${c.sector} · ${c.municipio}</div>
+    </div>`;
+  }).join("") || `<div style="padding:20px;color:var(--ink-soft);font-size:13px;">Sin resultados con estos filtros.</div>`;
+
+  listPane.querySelectorAll(".list-item").forEach(item=>{
+    item.addEventListener("click", ()=>{
+      selectedCompanyId = item.dataset.id;
+      listPane.querySelectorAll(".list-item").forEach(x=>x.classList.remove("active"));
+      item.classList.add("active");
+      renderDetailPane();
+    });
+  });
+
+  renderDetailPane();
+}
+
+function statusDotColor(status){
+  const map = {"Por contactar":"var(--amber)","Contactado":"var(--blue)","Cotización enviada":"var(--blue)","Cliente":"var(--green)","No interesado":"var(--red)","Sin respuesta":"var(--steel)"};
+  return map[status] || "var(--steel)";
+}
+
+function renderDetailPane(){
+  const pane = document.getElementById("empresasDetailPane");
+  const c = COMPANIES.find(x=>x.id===selectedCompanyId);
+  if(!c){ pane.innerHTML = `<div class="detail-empty">Selecciona una empresa de la lista para ver su ficha.</div>`; return; }
+  const st = crmState[c.id] || {status:"Por contactar", nextAction:"", notes:"", contactDate:"", medium:""};
+  const sc = sectorStyle(c.sector);
+  const initials = c.name.split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
+
+  pane.innerHTML = `
+    <div class="detail-header" style="--sc:${sc.c};--sc-bg:${sc.bg}">
+      <div class="detail-avatar">${initials}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="detail-badges">
+          <span class="sector-tag" style="color:${sc.c};background:${sc.bg}">${c.sector}</span>
           <span class="stamp st-${slug(st.status)}">${st.status}</span>
         </div>
-        <div class="municipio-tag">${c.municipio}</div>
-        <div class="company-name">${c.name}</div>
-        <div class="need">${c.need}</div>
-        <div class="contact-lines">
-          <div><span class="k">Contacto</span>${c.contact}</div>
-          <div><span class="k">Tel</span>${c.phone}</div>
-          <div><span class="k">Correo</span>${c.email!=="N/D" ? `<a href="mailto:${c.email.split(' ')[0]}">${c.email}</a>` : "N/D"}</div>
-          <div><span class="k">Dir</span>${c.address}</div>
-        </div>
-        <div class="card-actions">
-          <button class="btn toggle-panel">Editar seguimiento</button>
-          <button class="btn ghost gen-email">Generar correo</button>
-        </div>
+        <h2 class="detail-title">${c.name}</h2>
+        <div class="detail-sub">📍 ${c.municipio}</div>
       </div>
-      <div class="panel" id="panel-${c.id}">
+    </div>
+
+    <div class="detail-grid">
+      <div class="detail-card">
+        <h4>Necesidad de calibración</h4>
+        <p>${c.need}</p>
+      </div>
+      <div class="detail-card">
+        <h4>Contacto</h4>
+        <div class="detail-row"><span>Persona</span><b>${c.contact}</b></div>
+        <div class="detail-row"><span>Teléfono</span><b>${c.phone}</b></div>
+        <div class="detail-row"><span>Correo</span><b>${c.email!=="N/D" ? `<a href="mailto:${c.email.split(' ')[0]}">${c.email}</a>` : "N/D"}</b></div>
+        <div class="detail-row"><span>Dirección</span><b>${c.address}</b></div>
+      </div>
+      <div class="detail-card" style="grid-column:1/-1;">
+        <h4>Observación estratégica</h4>
+        <p>${c.note}</p>
+      </div>
+    </div>
+
+    <div class="detail-card" style="margin-top:14px;">
+      <h4>Seguimiento comercial</h4>
+      <div class="detail-form-grid">
         <div class="field"><label>Estado</label>
           <select class="f-status">${STATUSES.map(s=>`<option value="${s}" ${s===st.status?"selected":""}>${s}</option>`).join("")}</select>
         </div>
@@ -428,53 +490,42 @@ function renderCards(filtered){
           <select class="f-medium"><option value="">—</option>${["Correo","WhatsApp","Llamada","Visita","Referido"].map(m=>`<option value="${m}" ${m===st.medium?"selected":""}>${m}</option>`).join("")}</select>
         </div>
         <div class="field"><label>Próxima acción</label><input type="text" class="f-next" value="${st.nextAction||''}" placeholder="Ej: Llamar el jueves"></div>
-        <div class="field"><label>Observaciones</label><textarea class="f-notes" placeholder="Notas de la gestión...">${st.notes||''}</textarea></div>
-        <button class="btn save-btn">Guardar seguimiento</button>
-        <div class="save-note"></div>
       </div>
-    </div>`;
-  }).join("");
+      <div class="field"><label>Observaciones</label><textarea class="f-notes" placeholder="Notas de la gestión...">${st.notes||''}</textarea></div>
+      <div class="card-actions" style="border-top:none;padding-top:4px;margin-top:6px;">
+        <button class="btn save-btn">Guardar seguimiento</button>
+        <button class="btn ghost gen-email">Generar correo para esta empresa</button>
+      </div>
+      <div class="save-note"></div>
+    </div>
+  `;
 
-  grid.querySelectorAll(".toggle-panel").forEach(btn=>{
-    btn.addEventListener("click",(e)=>{ e.target.closest(".card").querySelector(".panel").classList.toggle("open"); });
+  pane.querySelector(".save-btn").addEventListener("click", async ()=>{
+    const oldStatus = (crmState[c.id]||{}).status || "Por contactar";
+    crmState[c.id] = {
+      status: pane.querySelector(".f-status").value,
+      contactDate: pane.querySelector(".f-date").value,
+      medium: pane.querySelector(".f-medium").value,
+      nextAction: pane.querySelector(".f-next").value,
+      notes: pane.querySelector(".f-notes").value,
+    };
+    const note = pane.querySelector(".save-note");
+    note.textContent = "Guardando...";
+    const ok = await saveState(c.id);
+    note.textContent = ok ? "Guardado ✓" : "Error al guardar, intenta de nuevo";
+    if(ok){
+      logAutoActivity(c, oldStatus, crmState[c.id]);
+      renderExplorer(COMPANIES.filter(matchesFilters));
+    }
   });
-  grid.querySelectorAll(".save-btn").forEach(btn=>{
-    btn.addEventListener("click", async (e)=>{
-      const card = e.target.closest(".card");
-      const id = card.dataset.id;
-      const panel = card.querySelector(".panel");
-      const oldStatus = (crmState[id]||{}).status || "Por contactar";
-      crmState[id] = {
-        status: panel.querySelector(".f-status").value,
-        contactDate: panel.querySelector(".f-date").value,
-        medium: panel.querySelector(".f-medium").value,
-        nextAction: panel.querySelector(".f-next").value,
-        notes: panel.querySelector(".f-notes").value,
-      };
-      const note = panel.querySelector(".save-note");
-      note.textContent = "Guardando...";
-      const ok = await saveState(id);
-      note.textContent = ok ? "Guardado ✓" : "Error al guardar, intenta de nuevo";
-      const stampEl = card.querySelector(".stamp");
-      stampEl.className = "stamp st-" + slug(crmState[id].status);
-      stampEl.textContent = crmState[id].status;
-      if(ok){
-        const company = COMPANIES.find(c=>c.id===id);
-        logAutoActivity(company, oldStatus, crmState[id]);
-      }
-    });
-  });
-  grid.querySelectorAll(".gen-email").forEach(btn=>{
-    btn.addEventListener("click",(e)=>{
-      const id = e.target.closest(".card").dataset.id;
-      const company = COMPANIES.find(c=>c.id===id);
-      generateEmail(company);
-      document.querySelectorAll(".nav-list button").forEach(b=>b.classList.remove("active"));
-      document.querySelector('[data-view="correo"]').classList.add("active");
-      document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
-      document.getElementById("view-correo").classList.add("active");
-      showToast("Correo generado para " + company.name);
-    });
+
+  pane.querySelector(".gen-email").addEventListener("click", ()=>{
+    generateEmail(c);
+    document.querySelectorAll(".nav-list button").forEach(b=>b.classList.remove("active"));
+    document.querySelector('[data-view="correo"]').classList.add("active");
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    document.getElementById("view-correo").classList.add("active");
+    showToast("Correo generado para " + c.name);
   });
 }
 
@@ -498,6 +549,32 @@ document.querySelectorAll(".view-toggle button").forEach(b=>{
     renderEmpresas();
   });
 });
+
+/* ---------- DESCARGA DEL CRM EN VIVO (Excel, vía SheetJS) ---------- */
+document.getElementById("exportCrmExcelBtn").addEventListener("click", ()=>{
+  if(typeof XLSX === "undefined"){ showToast("No se pudo cargar el generador de Excel (revisa tu conexión a internet)"); return; }
+  const rows = COMPANIES.map(c=>{
+    const st = crmState[c.id] || {status:"Por contactar", nextAction:"", notes:"", contactDate:"", medium:""};
+    return {
+      "Sector": c.sector, "Empresa": c.name, "Necesidad de calibración": c.need,
+      "Contacto": c.contact, "Teléfono": c.phone, "Correo": c.email, "Dirección": c.address,
+      "Municipio": c.municipio, "Estado": st.status, "Fecha de contacto": st.contactDate||"",
+      "Medio": st.medium||"", "Próxima acción": st.nextAction||"", "Observaciones": st.notes||"",
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = [{wch:20},{wch:32},{wch:34},{wch:22},{wch:18},{wch:26},{wch:26},{wch:14},{wch:16},{wch:14},{wch:12},{wch:26},{wch:34}];
+  const actRows = activities.map(a=>({Fecha:a.date, Tipo:a.type, Modalidad:a.mode, Descripción:a.desc, Evidencia:a.evidence, Horas:a.hours}));
+  const wsAct = XLSX.utils.json_to_sheet(actRows.length ? actRows : [{Fecha:"",Tipo:"",Modalidad:"",Descripción:"",Evidencia:"",Horas:""}]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "CRM en vivo");
+  XLSX.utils.book_append_sheet(wb, wsAct, "Registro de Actividades");
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `CRM_calibracion_en_vivo_${today}.xlsx`);
+  showToast("Excel descargado con los datos actuales del CRM");
+});
+
+
 
 document.getElementById("searchBox").addEventListener("input", renderEmpresas);
 document.getElementById("statusFilter").addEventListener("change", renderEmpresas);

@@ -77,9 +77,12 @@
     <div class="page-head">
       <div>
         <h1>Base de datos de empresas</h1>
-        <p>Prospectos de Manizales y Caldas con necesidad probable de calibración. Edita el seguimiento directamente en cada ficha.</p>
+        <p>Prospectos de Caldas con necesidad probable de calibración. Selecciona una empresa para ver su ficha completa y editar el seguimiento.</p>
       </div>
-      <button class="export-btn" id="exportCsvBtn">↓ Exportar CSV</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="export-btn" id="exportCsvBtn">↓ CSV</button>
+        <button class="export-btn" id="exportCrmExcelBtn" style="background:var(--navy);color:#fff;border-color:var(--navy);">⬇ Descargar CRM (Excel)</button>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -95,14 +98,17 @@
         <option value="Sin respuesta">Sin respuesta</option>
       </select>
       <div class="view-toggle">
-        <button data-mode="cards" class="active">Fichas</button>
+        <button data-mode="cards" class="active">Explorador</button>
         <button data-mode="table">Tabla</button>
       </div>
     </div>
     <div class="seg" id="sectorTabs"></div>
     <div class="count-line" id="countLine"></div>
 
-    <div class="grid" id="cardGrid"></div>
+    <div class="empresas-layout" id="empresasLayout">
+      <div class="empresas-list-pane" id="empresasListPane"></div>
+      <div class="empresas-detail-pane" id="empresasDetailPane"></div>
+    </div>
     <div id="tableWrap" style="display:none;overflow-x:auto;"></div>
   </section>
 
@@ -248,6 +254,7 @@
 <div class="toast" id="toast"></div>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/data.js"></script>
 <script src="js/app.js"></script>

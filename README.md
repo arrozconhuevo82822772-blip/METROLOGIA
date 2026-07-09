@@ -7,6 +7,17 @@ correo y guion de llamada.
 
 ## Novedades de esta versión
 
+- **Vista "Empresas" rediseñada por completo**: ahora es un explorador tipo
+  maestro-detalle (lista a la izquierda, ficha completa a la derecha) con
+  colores propios por sector, en vez de solo tarjetas repetidas. Al hacer
+  clic en una empresa de la lista, se abre su ficha con toda la
+  información y el formulario de seguimiento.
+- **Botón "Descargar CRM (Excel)"**: genera un archivo Excel al instante,
+  directamente desde el navegador, con los datos **exactamente como están
+  en ese momento en la página** (incluye el estado, notas y próxima acción
+  de cada empresa, más el registro de actividades). Esto resuelve que el
+  Excel y la página mostraran cosas distintas: ahora puedes generar el
+  Excel bajo demanda desde la propia página, siempre actualizado.
 - **91 empresas** en 22 municipios de Caldas — se amplió con entidades
   públicas (alcaldías, UMATA, hospitales) de municipios que faltaban: Supía,
   Filadelfia, Viterbo, Marquetalia, Manzanares, Pácora, Belalcázar, Victoria,
